@@ -1,0 +1,4 @@
+pandas
+tqdm
+rank-bm25
+nltk
