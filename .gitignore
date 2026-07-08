@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Raw and processed datasets
+data/raw/
+data/processed/
+*.jsonl
+
+# Large generated outputs
+outputs/
+*.pkl
+*.pickle
+*.npy
+*.npz
+*.parquet
+*.csv
+
+# BM25 / search indexes
+bm25_index/
+outputs/bm25_index/
+*.index
+*.faiss
+
+# Hugging Face / datasets cache
+.cache/
+huggingface/
+hf_cache/
+datasets_cache/
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
