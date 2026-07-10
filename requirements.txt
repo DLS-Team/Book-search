@@ -1,0 +1,14 @@
+pandas==2.2.3
+tqdm==4.67.1
+rank-bm25==0.2.2
+nltk==3.9.1
+datasets==3.6.0
+bm25s==0.2.5
+numpy
+faiss-cpu
+sentence-transformers
+fastapi
+uvicorn[standard]
+pydantic
+streamlit
+requests

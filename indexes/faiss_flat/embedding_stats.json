@@ -1,0 +1,11 @@
+{
+  "num_chapters": 5,
+  "embedding_dim": 384,
+  "embedding_seconds_total": 0.029,
+  "embedding_seconds_per_chapter": 0.005801,
+  "vector_size_bytes_total": 7680,
+  "vector_size_bytes_per_chapter": 1536,
+  "model_name": "MOCK_ENCODER (pipeline validation only)",
+  "representation_strategy": "title_first_middle_last",
+  "normalization": "l2"
+}
