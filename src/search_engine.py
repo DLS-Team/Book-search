@@ -8,6 +8,7 @@ import numpy as np
 from dataclasses import asdict  # <-- ДОБАВЛЕНО для конвертации dataclass Role 2 в dict
 from typing import List, Dict, Any
 from pathlib import Path
+from tqdm import tqdm
 
 # === СТРОГИЕ ИМПОРТЫ МОДУЛЕЙ ДРУГИХ РОЛЕЙ ===
 from paragraph_refinement import resolve_fragments, load_chunks_db
@@ -26,6 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 FAISS_HNSW_PATH = BASE_DIR / "indexes" / "faiss_ann" / "faiss_hnsw.index"
 # Путь к маппингу ID (создается Role 2, нужно нам для HNSW)
 CHAPTER_IDS_PATH = BASE_DIR / "indexes" / "faiss_flat" / "chapter_ids.json"
+BM25_INDEX_DIR = BASE_DIR / "indexes" / "bm25"
 
 # === ГЛОБАЛЬНОЕ СОСТОЯНИЕ СЕРВЕРА ===
 APP_STATE = {
@@ -142,17 +144,20 @@ def search(query: str, method: str = "hybrid", top_k: int = 5) -> List[Dict[str,
         dense_dataclass_results = search_dense_raw(query, top_k)
         raw_results = [asdict(r) for r in dense_dataclass_results]
 
-    elif method == "dense_ann":
-        if not APP_STATE["faiss_hnsw"] or not APP_STATE["chapter_ids"]:
-            raise RuntimeError("HNSW индекс или маппинг ID не загружены!")
 
+    elif method == "dense_ann":
+        if not APP_STATE["faiss_hnwn"] or not APP_STATE["chapter_ids"]:
+            raise RuntimeError("HNSW индекс или маппинг ID не загружены!")
         query_vector = encode_query(query).reshape(1, -1).astype('float32')
         faiss.normalize_L2(query_vector)
-
         scores, ids = APP_STATE["faiss_hnsw"].search(query_vector, top_k)
-
         # ВАЖНО: Маппим числовой индекс FAISS в реальный строковый ID чанка
-        for rank, (score, idx) in enumerate(zip(scores[0], ids[0]), start=1):
+        raw_results = []
+        # Добавлен tqdm (leave=False чтобы не засорять логи пустыми строками после завершения)
+        for rank, (score, idx) in tqdm(enumerate(zip(scores[0], ids[0]), start=1),
+                                       total=len(scores[0]),
+                                       desc="Mapping HNSW IDs",
+                                       leave=False):
             if idx != -1:
                 str_chapter_id = APP_STATE["chapter_ids"][idx]
                 raw_results.append({
@@ -162,8 +167,11 @@ def search(query: str, method: str = "hybrid", top_k: int = 5) -> List[Dict[str,
                 })
 
     elif method in ["hybrid", "refined"]:
-        # Предполагаем, что Role 3 вернет список словарей
-        raw_results = search_hybrid_rrf(query, top_k)
+        raw_results = search_hybrid_rrf(
+            query,
+            top_k,
+            bm25_index_dir=BM25_INDEX_DIR
+        )
 
     else:
         raise ValueError(f"Неизвестный метод: {method}")
