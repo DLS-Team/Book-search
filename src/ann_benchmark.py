@@ -1,178 +1,232 @@
-import os
 import time
 import csv
-import psutil
+import os
+import shutil
+import tempfile
 import numpy as np
 import faiss
+import logging
+from pathlib import Path
+from tqdm import tqdm
 
-# Конфигурация путей
-BENCHMARK_CSV_PATH = "experiments/benchmark_results.csv"
-INDEX_DIR = "indexes/faiss_ann/"
+# Настройка логирования
+logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
+logger = logging.getLogger(__name__)
+
+# === БАЗОВЫЕ ПУТИ (Привязаны к местоположению скрипта) ===
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+ROLE2_FLAT_INDEX_PATH = BASE_DIR / "indexes" / "faiss_flat" / "flat.index"
+EMBEDDINGS_PATH = BASE_DIR / "indexes" / "faiss_flat" / "embeddings.npy"
+BENCHMARK_CSV = BASE_DIR / "experiments" / "benchmark_results.csv"
+INDEX_DIR = BASE_DIR / "indexes" / "faiss_ann"
+
+# === КОНФИГУРАЦИЯ БЕНЧМАРКА ===
+K = 10  # Сколько топ-результатов ищем
+N_QUERIES = 200  # Количество запросов для замера latency
 
 
-def ensure_dirs():
-    os.makedirs(INDEX_DIR, exist_ok=True)
-    os.makedirs(os.path.dirname(BENCHMARK_CSV_PATH), exist_ok=True)
+def load_embeddings() -> np.ndarray:
+    """Жестко загружает реальные эмбеддинги от Role 2. Без заглушек."""
+    if not EMBEDDINGS_PATH.exists():
+        raise FileNotFoundError(
+            f"Файл эмбеддингов не найден по пути: {EMBEDDINGS_PATH}\n"
+            f"Остановите скрипт и запустите пайплайн Role 2."
+        )
 
-
-def generate_synthetic_data(n: int, dim: int) -> np.ndarray:
-    """Генерирует случайные нормализованные векторы (заглушка вместо Role 2)."""
-    print(f"Генерация {n} синтетических векторов размерности {dim}...")
-    vectors = np.random.rand(n, dim).astype('float32')
-    faiss.normalize_L2(vectors)
+    vectors = np.load(str(EMBEDDINGS_PATH)).astype('float32')
+    logger.info(f"Успешно загружено векторов: {vectors.shape[0]}, размерность: {vectors.shape[1]}")
     return vectors
 
 
+def safe_read_index(filepath: Path) -> faiss.Index:
+    """
+    Безопасное чтение FAISS индекса, обходящее баг с кириллицей в пути на Windows.
+    Копирует файл в системную Temp, читает его, удаляет копию.
+    """
+    tmp_fd, tmp_path_str = tempfile.mkstemp(suffix=".index")
+    os.close(tmp_fd)
+    shutil.copy(str(filepath), tmp_path_str)
+
+    index = faiss.read_index(tmp_path_str)
+    os.remove(tmp_path_str)
+    return index
+
+
 def measure_build_time(index: faiss.Index, vectors: np.ndarray) -> float:
-    """Замеряет время добавления векторов в индекс."""
     start = time.perf_counter()
     index.add(vectors)
-    end = time.perf_counter()
-    return end - start
+    return time.perf_counter() - start
 
 
-def measure_index_size_on_disk(index: faiss.Index, filename: str) -> float:
-    """Сохраняет индекс и возвращает его размер в МБ."""
-    filepath = os.path.join(INDEX_DIR, filename)
-    faiss.write_index(index, filepath)
-    size_bytes = os.path.getsize(filepath)
-    return size_bytes / (1024 * 1024)  # В МБ
+def measure_load_time(filepath: Path) -> float:
+    start = time.perf_counter()
+    safe_read_index(filepath) # Используем нашу новую функцию
+    return time.perf_counter() - start
 
 
-def measure_search_latency(index: faiss.Index, queries: np.ndarray, k: int, n_runs: int = 100) -> dict:
-    """Замеряет p50 и p95 latency поиска. Включает warmup."""
-    # Warmup (разогрев кэшей и потоков FAISS)
-    warmup_queries = 10
-    index.search(queries[:warmup_queries], k)
+def measure_disk_size(filepath: Path) -> float:
+    return filepath.stat().st_size / (1024 * 1024)  # в МБ
+
+
+def measure_search_latency(index: faiss.Index, queries: np.ndarray, k: int, desc: str = "Searching") -> dict:
+    actual_k = min(k, index.ntotal)
+    index.search(queries[:5], actual_k)  # Warmup
 
     latencies = []
-    for i in range(n_runs):
-        q = queries[i % len(queries)].reshape(1, -1)
+    # <-- ДОБАВЛЕН TQDM ДЛЯ НАГЛЯДНОСТИ ЗАМЕРА LATENCY
+    for q in tqdm(queries, desc=desc, leave=False, unit="query"):
         start = time.perf_counter()
-        index.search(q, k)
-        end = time.perf_counter()
-        latencies.append((end - start) * 1000)  # в мс
+        index.search(q.reshape(1, -1), actual_k)
+        latencies.append((time.perf_counter() - start) * 1000)  # ms
 
     latencies.sort()
-    p50 = latencies[int(len(latencies) * 0.50)]
-    p95 = latencies[int(len(latencies) * 0.95)]
-    return {"p50_ms": p50, "p95_ms": p95}
-
-
-def calculate_recall(ground_truth_ids: np.ndarray, ann_ids: np.ndarray) -> float:
-    """Считает долю совпадений топ-k результатов."""
-    matches = np.sum(ground_truth_ids == ann_ids)
-    return matches / ground_truth_ids.size
-
-
-def run_single_benchmark(vectors: np.ndarray, queries: np.ndarray, k: int, index_type: str, **kwargs):
-    """Запускает бенчмарк для одного типа индекса."""
-    dim = vectors.shape[1]
-    print(f"\n--- Тестируется: {index_type} ---")
-
-    if index_type == "Flat":
-        index = faiss.IndexFlatIP(dim)
-    elif index_type == "HNSW":
-        M = kwargs.get('M', 32)
-        efConstruction = kwargs.get('efConstruction', 200)
-        efSearch = kwargs.get('efSearch', 128)
-
-        index = faiss.IndexHNSWFlat(dim, M, faiss.METRIC_INNER_PRODUCT)
-        index.hnsw.efConstruction = efConstruction
-        index.hnsw.efSearch = efSearch
-    else:
-        raise ValueError("Unknown index type")
-
-    # 1. Build time
-    build_time = measure_build_time(index, vectors)
-    print(f"Build time: {build_time:.2f} sec")
-
-    # 2. Search Latency
-    latency_metrics = measure_search_latency(index, queries, k)
-    print(f"Latency p50: {latency_metrics['p50_ms']:.3f} ms | p95: {latency_metrics['p95_ms']:.3f} ms")
-
-    # 3. Index Size on Disk
-    disk_size = measure_index_size_on_disk(index, f"{index_type.lower()}_tmp.index")
-    print(f"Index size on disk: {disk_size:.2f} MB")
-
-    # 4. RAM Usage (оценка через размер файла для Flat, через psutil для HNSW)
-    # Простая, но точная для FAISS оценка памяти = размер файла на диске
-    ram_usage = disk_size
-
     return {
-        "method": index_type if index_type == "Flat" else f"HNSW (M={kwargs.get('M')}, efC={kwargs.get('efConstruction')}, efS={kwargs.get('efSearch')})",
-        "build_time_sec": round(build_time, 2),
-        "index_size_mb": round(disk_size, 2),
-        "ram_usage_mb": round(ram_usage, 2),
-        "p50_ms": round(latency_metrics['p50_ms'], 3),
-        "p95_ms": round(latency_metrics['p95_ms'], 3),
-        "recall_vs_flat": None  # Заполнится позже
+        "p50_ms": round(latencies[int(len(latencies) * 0.50)], 3),
+        "p95_ms": round(latencies[int(len(latencies) * 0.95)], 3)
     }
 
 
-def save_to_csv(results: list[dict]):
-    """Сохраняет результаты в CSV для Role 3."""
-    file_exists = os.path.isfile(BENCHMARK_CSV_PATH)
+def calculate_recall(gt_ids: np.ndarray, test_ids: np.ndarray) -> float:
+    return np.sum(gt_ids == test_ids) / gt_ids.size
 
-    with open(BENCHMARK_CSV_PATH, 'a', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=results[0].keys())
-        if not file_exists:
-            writer.writeheader()
+
+def run_index_benchmark(vectors: np.ndarray, queries: np.ndarray, index_name: str, **params) -> dict:
+    dim = vectors.shape[1]
+
+    if index_name == "FAISS_Flat":
+        logger.info(f"Сборка индекса: {index_name}...")
+        index = faiss.IndexFlatIP(dim)
+    elif index_name == "FAISS_HNSW":
+        logger.info(
+            f"Сборка индекса: {index_name} (M={params.get('M')}, efC={params.get('efConstruction')}). Это займет время, FAISS строит граф в фоне...")
+        index = faiss.IndexHNSWFlat(dim, params.get('M', 32), faiss.METRIC_INNER_PRODUCT)
+        index.hnsw.efConstruction = params.get('efConstruction', 200)
+        index.hnsw.efSearch = params.get('efSearch', 128)
+    else:
+        raise ValueError(f"Unknown index: {index_name}")
+
+    # 1. Build Time
+    build_time = measure_build_time(index, vectors)
+    logger.info(f"Индекс {index_name} собран за {build_time:.2f} сек.")
+
+    # 2. Disk Size (Фикс для OneDrive: пишем в темп, переносим в финальную папку)
+    INDEX_DIR.mkdir(parents=True, exist_ok=True)
+    # Убрали _tmp из названия! Это теперь финальные файлы
+    target_filepath = INDEX_DIR / f"{index_name.lower()}.index"
+
+    tmp_fd, tmp_path_str = tempfile.mkstemp(suffix=".index")
+    os.close(tmp_fd)
+    faiss.write_index(index, tmp_path_str)
+    shutil.move(tmp_path_str, str(target_filepath))
+    disk_size = measure_disk_size(target_filepath)
+
+    # 3. Load Time (Фикс для OneDrive: читаем из темп-копии)
+    tmp_fd2, tmp_path_str2 = tempfile.mkstemp(suffix=".index")
+    os.close(tmp_fd2)
+    shutil.copy(str(target_filepath), tmp_path_str2)
+    load_time = measure_load_time(Path(tmp_path_str2))
+    os.remove(tmp_path_str2)  # Удаляем только временную копию для замера скорости
+
+    # ВАЖНО: Мы больше НЕ удаляем target_filepath!
+    # Он останется на диске для search_engine.py (Таска 4.4)
+    logger.info(f"Финальный индекс сохранен на диск для онлайн-сервинга: {target_filepath}")
+
+    # 4. RAM estimation
+    ram_usage = disk_size * 1.1 if "HNSW" in index_name else disk_size
+
+    # 5. Search Latency (Передаем название для tqdm)
+    latency = measure_search_latency(index, queries, K, desc=f"Latency {index_name}")
+
+    return {
+        "build_time_sec": round(build_time, 2),
+        "load_time_sec": round(load_time, 2),
+        "index_size_mb": round(disk_size, 2),
+        "ram_usage_mb": round(ram_usage, 2),
+        "p50_ms": latency["p50_ms"],
+        "p95_ms": latency["p95_ms"],
+        "index_object": index
+    }
+
+
+def save_results_to_csv(results: list):
+    fieldnames = ["search_mode", "build_time_sec", "load_time_sec", "index_size_mb", "ram_usage_mb", "p50_ms", "p95_ms",
+                  "recall_vs_flat"]
+
+    with open(str(BENCHMARK_CSV), 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
         writer.writerows(results)
-    print(f"\n[+] Результаты сохранены в {BENCHMARK_CSV_PATH}")
+    logger.info(f"Реальные метрики сохранены в {BENCHMARK_CSV}")
 
 
 if __name__ == "__main__":
-    ensure_dirs()
+    start_total = time.perf_counter()
+    logger.info("=== ЗАПУСК ФИНАЛЬНОГО БЕНЧМАРКА НА РЕАЛЬНЫХ ДАННЫХ ===")
 
-    # ВНИМАНИЕ: 500k векторов HNSW может съесть ~2-2.5 ГБ RAM.
-    # Для первой проверки на ноутбуке оставь 100_000. Перед финальным прогоном поменяй на 500_000.
-    N_VECTORS = 100_000
-    DIM = 768
-    K = 10
-    N_QUERIES = 200
+    # Шаг 1: Загрузка векторов
+    db_vectors = load_embeddings()
+    actual_n_queries = min(N_QUERIES, db_vectors.shape[0])
+    query_vectors = db_vectors[:actual_n_queries]
 
-    # Генерируем данные
-    db_vectors = generate_synthetic_data(N_VECTORS, DIM)
-    query_vectors = generate_synthetic_data(N_QUERIES, DIM)
+    csv_rows = []
 
-    results = []
+    # Шаг 2: ИСПОЛЬЗУЕМ ГОТОВЫЙ FLAT ОТ ROLE 2 КАК ЭТАЛОН
+    logger.info("=== 1/3: ЗАГРУЗКА ЭТАЛОНА FAISS FLAT (от Role 2) ===")
+    if not ROLE2_FLAT_INDEX_PATH.exists():
+        raise FileNotFoundError(f"Эталонный Flat индекс от Role 2 не найден по пути: {ROLE2_FLAT_INDEX_PATH}")
 
-    # 1. Тест FAISS Flat (Эталон)
-    flat_res = run_single_benchmark(db_vectors, query_vectors, K, "Flat")
+    # Замеряем время загрузки
+    flat_load_time = measure_load_time(ROLE2_FLAT_INDEX_PATH)
+    flat_size_mb = measure_disk_size(ROLE2_FLAT_INDEX_PATH)
 
-    # Достаем ground truth из Flat
-    flat_index = faiss.read_index(os.path.join(INDEX_DIR, "flat_tmp.index"))
-    gt_distances, gt_ids = flat_index.search(query_vectors, K)
-    flat_res["recall_vs_flat"] = 1.0
-    results.append(flat_res)
+    # Загружаем в память для поиска (используем safe_read из-за кириллицы)
+    flat_index = safe_read_index(ROLE2_FLAT_INDEX_PATH)
+    logger.info(f"Flat индекс загружен из памяти Role 2. Векторов: {flat_index.ntotal}")
+    # Замеряем latency Flat
+    flat_latency = measure_search_latency(flat_index, query_vectors, K, desc="Latency FAISS_Flat")
 
-    # 2. Тест HNSW (дефолтные параметры)
-    hnsw_res = run_single_benchmark(db_vectors, query_vectors, K, "HNSW", M=32, efConstruction=200, efSearch=128)
+    # Получаем Ground Truth (идеальные результаты) для расчета Recall у HNSW
+    _, gt_ids = flat_index.search(query_vectors, K)
 
-    # Считаем Recall HNSW против Flat
-    hnsw_index = faiss.read_index(os.path.join(INDEX_DIR, "hnsw_tmp.index"))
-    _, hnsw_ids = hnsw_index.search(query_vectors, K)
-    recall = calculate_recall(gt_ids, hnsw_ids)
-    hnsw_res["recall_vs_flat"] = round(recall, 4)
-    print(f"Recall@{K} vs Flat: {recall:.4f}")
-    results.append(hnsw_res)
+    csv_rows.append({
+        "search_mode": "Dense_Flat",
+        "build_time_sec": "N/A (Собран Role 2)",  # Мы его не строили
+        "load_time_sec": round(flat_load_time, 2),
+        "index_size_mb": round(flat_size_mb, 2),
+        "ram_usage_mb": round(flat_size_mb, 2),
+        "p50_ms": flat_latency["p50_ms"],
+        "p95_ms": flat_latency["p95_ms"],
+        "recall_vs_flat": 1.0
+    })
 
-    # 3. (Опционально) Тест HNSW с агрессивным efSearch (для демонстрации trade-off на защите)
-    hnsw_res_fast = run_single_benchmark(db_vectors, query_vectors, K, "HNSW", M=32, efConstruction=200, efSearch=16)
-    hnsw_index_fast = faiss.read_index(
-        os.path.join(INDEX_DIR, "hnsw_tmp.index"))  # Перезаписывается, но efSearch мы задали ниже
-    hnsw_index_fast.hnsw.efSearch = 16
-    _, hnsw_ids_fast = hnsw_index_fast.search(query_vectors, K)
-    recall_fast = calculate_recall(gt_ids, hnsw_ids_fast)
-    hnsw_res_fast["recall_vs_flat"] = round(recall_fast, 4)
-    hnsw_res_fast["method"] = "HNSW (M=32, efC=200, efS=16 - FAST)"
-    print(f"Recall@{K} vs Flat (FAST): {recall_fast:.4f}")
-    results.append(hnsw_res_fast)
+    # Шаг 3: Бенчмарк HNSW (Сбалансированный)
+    logger.info("=== 2/3: СБОРКА И ТЕСТИРОВАНИЕ FAISS HNSW (Сбалансированный) ===")
+    hnsw_metrics = run_index_benchmark(db_vectors, query_vectors, "FAISS_HNSW", M=32, efConstruction=200, efSearch=128)
+    _, hnsw_ids = hnsw_metrics.pop("index_object").search(query_vectors, K)
 
-    # Сохраняем в CSV
-    save_to_csv(results)
+    csv_rows.append({
+        "search_mode": "Dense_ANN_HNSW",
+        "recall_vs_flat": round(calculate_recall(gt_ids, hnsw_ids), 4),
+        **hnsw_metrics
+    })
 
-    # Удаляем временные индексы с диска (они нам пока не нужны, сохраним место)
-    os.remove(os.path.join(INDEX_DIR, "flat_tmp.index"))
-    os.remove(os.path.join(INDEX_DIR, "hnsw_tmp.index"))
+    # Шаг 4: Бенчмарк HNSW (Агрессивный)
+    logger.info("=== 3/3: СБОРКА И ТЕСТИРОВАНИЕ FAISS HNSW (Агрессивный/Быстрый) ===")
+    hnsw_fast_metrics = run_index_benchmark(db_vectors, query_vectors, "FAISS_HNSW", M=16, efConstruction=100,
+                                            efSearch=32)
+    _, hnsw_fast_ids = hnsw_fast_metrics.pop("index_object").search(query_vectors, K)
+
+    csv_rows.append({
+        "search_mode": "Dense_ANN_HNSW_Fast",
+        "recall_vs_flat": round(calculate_recall(gt_ids, hnsw_fast_ids), 4),
+        **hnsw_fast_metrics
+    })
+
+    # Шаг 5: Финализация
+    save_results_to_csv(csv_rows)
+
+    total_time = time.perf_counter() - start_total
+    logger.info(f"=== БЕНЧМАРК УСПЕШНО ЗАВЕРШЕН ЗА {total_time:.2f} СЕКУНД ===")
+    logger.info("HNSW индексы сохранены в indexes/faiss.ann/ для online-сервинга (Таска 4.4).")
+    logger.info("Передай файл experiments/benchmark_results.csv Role 3.")

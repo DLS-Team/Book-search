@@ -33,6 +33,7 @@ data/processed/
 outputs/
 *.pkl
 *.pickle
+*.npy
 *.npz
 *.parquet
 *.csv
