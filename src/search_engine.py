@@ -137,7 +137,11 @@ def search(query: str, method: str = "hybrid", top_k: int = 5) -> List[Dict[str,
 
     if method == "bm25":
         # Предполагаем, что Role 1 возвращает список словарей
-        raw_results = search_bm25(query, top_k)
+        raw_results = search_bm25(
+            index_dir=BM25_INDEX_DIR,
+            query=query,
+            top_k=top_k,
+        )
 
     elif method == "dense":
         # Role 2 возвращает List[DenseResult]. Конвертируем dataclass в dict через asdict()
@@ -146,7 +150,7 @@ def search(query: str, method: str = "hybrid", top_k: int = 5) -> List[Dict[str,
 
 
     elif method == "dense_ann":
-        if not APP_STATE["faiss_hnwn"] or not APP_STATE["chapter_ids"]:
+        if not APP_STATE["faiss_hnsw"] or not APP_STATE["chapter_ids"]:
             raise RuntimeError("HNSW индекс или маппинг ID не загружены!")
         query_vector = encode_query(query).reshape(1, -1).astype('float32')
         faiss.normalize_L2(query_vector)

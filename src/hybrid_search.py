@@ -21,7 +21,7 @@ from typing import Any
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_BM25_INDEX_DIR = PROJECT_ROOT / "outputs" / "bm25_index"
+DEFAULT_BM25_INDEX_DIR = PROJECT_ROOT / "indexes" / "bm25"
 DEFAULT_RRF_K = 60
 DEFAULT_CANDIDATE_MULTIPLIER = 5
 

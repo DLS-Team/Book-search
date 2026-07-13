@@ -43,9 +43,9 @@ streamlit run frontend.py                     # терминал 2
 
 ## Про MockEncoder (важно)
 
-В `src/embed_chapters.py` есть флаг `USE_MOCK_ENCODER = True`. Он включён,
-потому что в этой рабочей среде нет доступа к huggingface.co для скачивания
-весов реальной модели. `MockEncoder` — детерминированный хэш-based
+В `src/embed_chapters.py` есть флаг `USE_MOCK_ENCODER`. Для реального индекса
+он установлен в `False`, потому что индекс в `indexes/faiss_flat` построен
+моделью `sentence-transformers/all-MiniLM-L6-v2`. `MockEncoder` — детерминированный хэш-based
 псевдо-энкодер, нужен **только** чтобы протестировать механику всего пайплайна
 (representation → embedding → normalization → FAISS → search → API → UI) без
 интернета. Он **не** даёт осмысленного семантического поиска — это видно по
@@ -54,7 +54,7 @@ streamlit run frontend.py                     # терминал 2
 
 Перед реальным запуском на корпусе Role 1:
 1. `pip install sentence-transformers torch`
-2. в `embed_chapters.py` поставить `USE_MOCK_ENCODER = False`
+2. убедиться, что `USE_MOCK_ENCODER = False`
 3. заменить `data_loader.load_sample_chapters()` на загрузку из
    `data/processed/` (реальная схема Role 1, таск 1.2)
 

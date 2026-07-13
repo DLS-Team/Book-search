@@ -44,6 +44,17 @@ outputs/bm25_index/
 *.index
 *.faiss
 
+# Canonical local index directories (keep only directory placeholders in Git)
+indexes/bm25/*
+!indexes/bm25/.gitkeep
+indexes/faiss_flat/*
+!indexes/faiss_flat/.gitkeep
+indexes/faiss_ann/*
+!indexes/faiss_ann/.gitkeep
+
+# Legacy Role 2 directory name; the canonical path is indexes/faiss_flat/
+indexes/dense_flat/
+
 # Hugging Face / datasets cache
 .cache/
 huggingface/

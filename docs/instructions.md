@@ -107,9 +107,9 @@ python src\bm25_search.py build --max-docs 600000
 Outputs:
 
 ```text
-outputs/bm25_index/
-outputs/bm25_index/bm25_registry.json
-outputs/bm25_index/metadata.pkl
+indexes/bm25/bm25_index/
+indexes/bm25/bm25_registry.json
+indexes/bm25/metadata.pkl
 ```
 
 The default `--max-docs 600000` is enough for the project scale requirement and is safer for laptops.

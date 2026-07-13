@@ -46,7 +46,9 @@ POOLING = "mean"
 MAX_TOKENS = 256
 NORMALIZATION = "l2"
 
-USE_MOCK_ENCODER = True  # flip to False once sentence-transformers + weights are available
+# Production retrieval must use the same real encoder recorded in
+# indexes/faiss_flat/embedding_stats.json. The mock is only for isolated tests.
+USE_MOCK_ENCODER = False
 
 
 class MockEncoder:

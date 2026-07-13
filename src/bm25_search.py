@@ -156,7 +156,7 @@ def main() -> None:
 
     build_parser = subparsers.add_parser("build")
     build_parser.add_argument("--input-jsonl", type=Path, default=Path("data/processed/processed_chapters.jsonl"))
-    build_parser.add_argument("--index-dir", type=Path, default=Path("outputs/bm25_index"))
+    build_parser.add_argument("--index-dir", type=Path, default=Path("indexes/bm25"))
     build_parser.add_argument(
         "--max-docs",
         type=int,
@@ -165,7 +165,7 @@ def main() -> None:
     )
 
     search_parser = subparsers.add_parser("search")
-    search_parser.add_argument("--index-dir", type=Path, default=Path("outputs/bm25_index"))
+    search_parser.add_argument("--index-dir", type=Path, default=Path("indexes/bm25"))
     search_parser.add_argument("--query", required=True)
     search_parser.add_argument("--top-k", type=int, default=5)
 

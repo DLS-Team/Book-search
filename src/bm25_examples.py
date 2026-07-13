@@ -49,7 +49,7 @@ def main() -> None:
 
     for query in EXACT_KEYWORD_QUERIES:
         results = search(
-            index_dir=Path("outputs/bm25_index"),
+            index_dir=Path("indexes/bm25"),
             query=query,
             top_k=5,
         )
