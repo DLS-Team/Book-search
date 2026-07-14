@@ -37,6 +37,8 @@ outputs/
 *.npz
 *.parquet
 *.csv
+!runs/*.csv
+!evaluation/*.csv
 
 # BM25 / search indexes
 bm25_index/

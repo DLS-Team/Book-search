@@ -1,0 +1,111 @@
+{
+  "qrels": {
+    "queries": 48,
+    "qrels": 2304,
+    "skipped_missing": 7,
+    "skipped_invalid": 0,
+    "label_counts": {
+      "0": 184,
+      "1": 1966,
+      "2": 154
+    },
+    "confidence_counts": {
+      "high": 387,
+      "low": 960,
+      "medium": 957
+    }
+  },
+  "runs": {
+    "queries": 48,
+    "methods": {
+      "bm25": {
+        "rows": 960,
+        "queries": 48
+      },
+      "dense_ann": {
+        "rows": 960,
+        "queries": 48
+      },
+      "dense_flat": {
+        "rows": 960,
+        "queries": 48
+      },
+      "hybrid_rrf": {
+        "rows": 960,
+        "queries": 48
+      }
+    }
+  },
+  "metrics": {
+    "bm25": {
+      "Precision@5": 0.9249999999999999,
+      "Recall@10": 0.210034134577744,
+      "MRR@10": 0.9375,
+      "nDCG@10": 0.659134540198368
+    },
+    "dense_flat": {
+      "Precision@5": 0.9249999999999999,
+      "Recall@10": 0.20995166579695665,
+      "MRR@10": 0.9583333333333334,
+      "nDCG@10": 0.642284991764683
+    },
+    "dense_ann": {
+      "Precision@5": 0.9208333333333334,
+      "Recall@10": 0.2141001931804463,
+      "MRR@10": 0.9583333333333334,
+      "nDCG@10": 0.6365095877196713
+    },
+    "hybrid_rrf": {
+      "Precision@5": 0.9249999999999999,
+      "Recall@10": 0.21467794671086424,
+      "MRR@10": 0.9791666666666666,
+      "nDCG@10": 0.675310617637339
+    }
+  },
+  "latency": [
+    {
+      "Method": "BM25",
+      "Queries": 48,
+      "p50_ms": "15.907",
+      "p95_ms": "34.051",
+      "mean_ms": "18.207"
+    },
+    {
+      "Method": "Dense FAISS Flat",
+      "Queries": 48,
+      "p50_ms": "82.451",
+      "p95_ms": "89.346",
+      "mean_ms": "81.285"
+    },
+    {
+      "Method": "Dense FAISS ANN",
+      "Queries": 48,
+      "p50_ms": "17.326",
+      "p95_ms": "20.697",
+      "mean_ms": "17.801"
+    },
+    {
+      "Method": "Hybrid RRF",
+      "Queries": 48,
+      "p50_ms": "89.742",
+      "p95_ms": "110.120",
+      "mean_ms": "92.120"
+    }
+  ],
+  "example_query_difference": {
+    "query_id": "AW04",
+    "gap": 0.5124644915684198,
+    "scores": {
+      "bm25": 0.4539870836339925,
+      "dense_flat": 0.9374596158959401,
+      "dense_ann": 0.9664515752024123,
+      "hybrid_rrf": 0.7537774223943926
+    },
+    "top_results": {
+      "bm25": "58534-8_chunk_000254",
+      "dense_flat": "37179-8_chunk_000036",
+      "dense_ann": "37179-8_chunk_000036",
+      "hybrid_rrf": "37179-8_chunk_000010"
+    }
+  }
+}
