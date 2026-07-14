@@ -15,6 +15,7 @@ The public ``search_hybrid_rrf`` function is the interface consumed by Role 4.
 from __future__ import annotations
 
 import math
+from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -176,8 +177,21 @@ def search_hybrid_rrf(
         candidate_k = top_k * DEFAULT_CANDIDATE_MULTIPLIER
     candidate_k = _validate_positive_int(candidate_k, "candidate_k")
 
-    bm25_results = _run_bm25_search(Path(bm25_index_dir), query, candidate_k)
-    dense_results = _run_dense_search(query, candidate_k)
+    # BM25 and dense retrieval are independent, so run them concurrently.
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="hybrid") as pool:
+        bm25_future = pool.submit(
+            _run_bm25_search,
+            Path(bm25_index_dir),
+            query,
+            candidate_k,
+        )
+        dense_future = pool.submit(
+            _run_dense_search,
+            query,
+            candidate_k,
+        )
+        bm25_results = bm25_future.result()
+        dense_results = dense_future.result()
 
     return reciprocal_rank_fusion(
         bm25_results,

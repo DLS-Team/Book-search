@@ -5,6 +5,7 @@ import json
 import pickle
 import re
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -110,13 +111,36 @@ def build_index(input_jsonl: Path, index_dir: Path, max_docs: int | None) -> Non
     print(json.dumps(registry, ensure_ascii=False, indent=2))
 
 
-def search(index_dir: Path, query: str, top_k: int) -> list[dict[str, Any]]:
+@lru_cache(maxsize=4)
+def load_search_resources(index_dir_str: str) -> tuple[Any, list[dict[str, Any]]]:
+    """Load the BM25 index and metadata once per process."""
+    index_dir = Path(index_dir_str).resolve()
     retriever = bm25s.BM25.load(str(index_dir / "bm25_index"))
 
     with (index_dir / "metadata.pkl").open("rb") as f:
         metadata = pickle.load(f)
 
+    return retriever, metadata
+
+
+def preload(index_dir: Path) -> None:
+    """Warm the BM25 cache during backend startup."""
+    load_search_resources(str(Path(index_dir).resolve()))
+
+
+def search(index_dir: Path, query: str, top_k: int) -> list[dict[str, Any]]:
+    if not isinstance(query, str) or not query.strip():
+        raise ValueError("query must be a non-empty string")
+    if top_k < 1:
+        raise ValueError("top_k must be at least 1")
+
+    retriever, metadata = load_search_resources(
+        str(Path(index_dir).resolve())
+    )
+
     query_tokens = simple_tokenize(query)
+    if not query_tokens:
+        return []
 
     results, scores = retriever.retrieve([query_tokens], k=top_k * 5, corpus=None)
 

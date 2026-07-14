@@ -53,7 +53,8 @@ def resolve_fragments(top_chapters: List[Dict[str, Any]]) -> List[Dict[str, Any]
 
     resolved_results = []
 
-    for result in top_chapters:
+    for original_result in top_chapters:
+        result = dict(original_result)
         ch_id = str(result.get("chapter_id"))
 
         if ch_id not in db:

@@ -24,6 +24,7 @@ import json
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import List
 
@@ -59,24 +60,46 @@ def build_flat_index(index_dir: str = str(INDEX_DIR)) -> faiss.Index:
     return index
 
 
+@lru_cache(maxsize=4)
 def load_flat_index(index_dir: str = str(INDEX_DIR)) -> faiss.Index:
-    index_dir = Path(index_dir)
-    return faiss.read_index(str(index_dir / "flat.index"))
+    """Load a Flat index once per process."""
+    resolved = Path(index_dir).resolve()
+    return faiss.read_index(str(resolved / "flat.index"))
 
 
-def load_chapter_ids(index_dir: str = str(INDEX_DIR)) -> List[str]:
-    index_dir = Path(index_dir)
-    with open(index_dir / "chapter_ids.json", "r", encoding="utf-8") as f:
-        return json.load(f)
+@lru_cache(maxsize=4)
+def load_chapter_ids(index_dir: str = str(INDEX_DIR)) -> tuple[str, ...]:
+    """Load chapter IDs once per process."""
+    resolved = Path(index_dir).resolve()
+    with open(resolved / "chapter_ids.json", "r", encoding="utf-8") as f:
+        return tuple(json.load(f))
+
+
+def preload(index_dir: str = str(INDEX_DIR)) -> None:
+    """Warm dense retrieval resources during backend startup."""
+    resolved = str(Path(index_dir).resolve())
+    load_flat_index(resolved)
+    load_chapter_ids(resolved)
 
 
 def search(query: str, top_k: int = 10, index_dir: str = str(INDEX_DIR)) -> List[DenseResult]:
     """Dense semantic search. This is the exact interface Role 3 (hybrid RRF)
     and Role 4 (search_engine.py) call into."""
-    index = load_flat_index(index_dir)
-    chapter_ids = load_chapter_ids(index_dir)
+    if not isinstance(query, str) or not query.strip():
+        raise ValueError("query must be a non-empty string")
+    if top_k < 1:
+        raise ValueError("top_k must be at least 1")
+
+    resolved_index_dir = str(Path(index_dir).resolve())
+    index = load_flat_index(resolved_index_dir)
+    chapter_ids = load_chapter_ids(resolved_index_dir)
 
     q_vec = encode_query(query).astype(np.float32).reshape(1, -1)
+    if q_vec.shape[1] != index.d:
+        raise ValueError(
+            f"Query dimension {q_vec.shape[1]} does not match index dimension {index.d}"
+        )
+
     scores, idxs = index.search(q_vec, top_k)
 
     results: List[DenseResult] = []
