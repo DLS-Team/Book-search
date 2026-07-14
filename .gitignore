@@ -56,3 +56,5 @@ datasets_cache/
 # Temporary files
 tmp/
 temp/
+
+chapter_ids.json
