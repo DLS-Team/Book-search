@@ -1,0 +1,25 @@
+category,method,method_display,queries,Precision@5,Recall@10,MRR@10,nDCG@10
+action_situation,bm25,BM25,8,0.9500,0.2031,1.0000,0.7042
+action_situation,dense_ann,Dense FAISS ANN,8,0.9250,0.2059,0.9375,0.6115
+action_situation,dense_flat,Dense FAISS Flat,8,0.9000,0.2095,0.9375,0.6199
+action_situation,hybrid_rrf,Hybrid RRF,8,0.9250,0.2071,1.0000,0.6576
+ambiguous_weak_evidence,bm25,BM25,8,0.9250,0.2076,0.9375,0.5752
+ambiguous_weak_evidence,dense_ann,Dense FAISS ANN,8,0.9500,0.2130,0.9375,0.5669
+ambiguous_weak_evidence,dense_flat,Dense FAISS Flat,8,0.9500,0.2069,0.9375,0.5627
+ambiguous_weak_evidence,hybrid_rrf,Hybrid RRF,8,0.9250,0.2201,1.0000,0.6152
+atmosphere,bm25,BM25,8,0.9250,0.2173,0.8750,0.7659
+atmosphere,dense_ann,Dense FAISS ANN,8,0.9500,0.2232,0.9375,0.7773
+atmosphere,dense_flat,Dense FAISS Flat,8,0.9250,0.2175,0.9375,0.7564
+atmosphere,hybrid_rrf,Hybrid RRF,8,0.9000,0.2176,1.0000,0.7653
+emotion_mood,bm25,BM25,8,1.0000,0.2116,1.0000,0.6259
+emotion_mood,dense_ann,Dense FAISS ANN,8,0.9750,0.2122,1.0000,0.6259
+emotion_mood,dense_flat,Dense FAISS Flat,8,1.0000,0.2122,1.0000,0.6800
+emotion_mood,hybrid_rrf,Hybrid RRF,8,1.0000,0.2147,1.0000,0.6960
+exact_keyword,bm25,BM25,8,0.8500,0.2069,0.9375,0.7134
+exact_keyword,dense_ann,Dense FAISS ANN,8,0.7750,0.1973,0.9375,0.6204
+exact_keyword,dense_flat,Dense FAISS Flat,8,0.8000,0.1806,0.9375,0.6195
+exact_keyword,hybrid_rrf,Hybrid RRF,8,0.8750,0.1985,0.8750,0.6983
+semantic_scene,bm25,BM25,8,0.9000,0.2137,0.8750,0.5702
+semantic_scene,dense_ann,Dense FAISS ANN,8,0.9500,0.2330,1.0000,0.6172
+semantic_scene,dense_flat,Dense FAISS Flat,8,0.9750,0.2330,1.0000,0.6152
+semantic_scene,hybrid_rrf,Hybrid RRF,8,0.9250,0.2301,1.0000,0.6194
