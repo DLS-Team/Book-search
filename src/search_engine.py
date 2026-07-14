@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent.parent
 FAISS_HNSW_PATH = BASE_DIR / "indexes" / "faiss_ann" / "faiss_hnsw.index"
 CHAPTER_IDS_PATH = BASE_DIR / "indexes" / "faiss_flat" / "chapter_ids.json"
-BM25_INDEX_DIR = BASE_DIR / "outputs" / "bm25_index"
+BM25_INDEX_DIR = BASE_DIR / "indexes" / "bm25"
 
 APP_STATE: dict[str, Any] = {
     "faiss_hnsw": None,
