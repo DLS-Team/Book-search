@@ -1,24 +1,130 @@
 # Semantic Book Scene Search
 
-A search system for finding scenes, moods, situations, and events in public-domain fiction.
+Semantic Book Scene Search finds scenes, moods, situations, and events in public-domain fiction. The system combines lexical retrieval, dense semantic retrieval, approximate nearest-neighbor search, hybrid rank fusion, and chunk-level text resolution behind one web interface.
 
-Instead of relying only on exact keywords, the project combines lexical retrieval, dense semantic retrieval, approximate nearest-neighbor search, hybrid rank fusion, and chunk-level text resolution.
+## Documentation Map
 
-## Features
+The repository already contains detailed reports and decision records. This README is the entry point; the linked documents contain the full rationale, measurements, limitations, and implementation notes.
 
-- Free-form scene and mood search
-- BM25 lexical retrieval
-- Exact dense retrieval with FAISS Flat
-- Fast dense retrieval with FAISS HNSW
-- Hybrid BM25 + dense retrieval using Reciprocal Rank Fusion
-- Chunk text and metadata resolution for every search mode
-- Low-confidence warnings
-- FastAPI backend
-- Streamlit frontend
-- Cached indexes and repeated-query results
-- Public-domain Gutenberg-based corpus
+### Role reports
 
-## Project Structure
+- [Role 1 — Data, Tokenization, and BM25 Baseline](docs/role1_notes.md)  
+  Corpus construction, preprocessing schema, dataset statistics, tokenization decisions, and the BM25 baseline.
+
+- [Role 2 — Semantic Representation and Dense Retrieval](docs/role2_report.md)  
+  Chapter representation, embedding model selection, normalization, similarity metric, and dense-retrieval limitations.
+
+- [Role 3 — Hybrid BM25 + Dense RRF](docs/role3_hybrid_rrf.md)  
+  Reciprocal Rank Fusion, candidate merging, deduplication, score interpretation, and the Role 4 handoff contract.
+
+- [Role 4 — ANN, Refinement, and Serving Integration](docs/role4_report.md)  
+  HNSW benchmarking, metadata resolution, cross-encoder decision, serving architecture, and quality gates.
+
+### Architecture and experiment decisions
+
+- [ANN Architecture Decision](experiments/ann_architecture_decisions.md)  
+  Why HNSW was selected over IVF and compressed alternatives, including latency, memory, and recall measurements.
+
+- [Paragraph/Chunk Resolution Decision](experiments/paragraph_refinement_decision.md)  
+  Why the original local TF-IDF refinement plan was replaced with direct chunk metadata resolution.
+
+- [Serving Integration Decision](experiments/serving_integration_decision.md)  
+  Search facade, startup lifecycle, caching, unified result schema, graceful degradation, and concurrent hybrid retrieval.
+
+- [Quality Gate Decision](experiments/quality_gate_decision.md)  
+  Method-specific confidence thresholds, abstention behavior, provenance, and frontend integration.
+
+- [Cross-Encoder Rerank Decision](experiments/rerank_decision.md)  
+  Proof-of-concept results and the reason cross-encoder reranking was excluded from the main online serving path.
+
+- [Role 2 Slide Notes](slides/role2_slide.md)  
+  Slide-ready summary of the dense-retrieval contribution.
+
+## System Overview
+
+The online pipeline is:
+
+```text
+User query
+   |
+   v
+FastAPI backend
+   |
+   +--> BM25 lexical retrieval
+   |
+   +--> Exact dense FAISS Flat retrieval
+   |
+   +--> Dense ANN retrieval with FAISS HNSW
+   |
+   +--> Hybrid BM25 + HNSW via RRF
+   |
+   v
+Chunk text and metadata resolution
+   |
+   v
+Quality gate and provenance
+   |
+   v
+Streamlit frontend
+```
+
+The project uses chunk-level searchable objects rather than entire books or very long chapters. Role 1 produced 3,662,966 accepted searchable objects from 20,000 raw Gutenberg books, while the initial BM25 scalable experiment indexed 600,000 objects. See [Role 1 notes](docs/role1_notes.md) for the complete dataset statistics and preprocessing rationale.
+
+## Search Modes
+
+| Mode | Description | Recommended use |
+|---|---|---|
+| `bm25` | Lexical BM25 retrieval | Exact words, names, phrases, and rare terms |
+| `dense` | Exact FAISS Flat semantic retrieval | Dense quality reference and controlled comparison |
+| `dense_ann` | FAISS HNSW approximate retrieval | Fast semantic serving |
+| `hybrid` | BM25 + dense ANN combined with RRF | Best general-purpose retrieval mode |
+| `refined` | Hybrid retrieval with resolved chunk text and metadata | User-facing readable results |
+
+### BM25
+
+BM25 is the lexical baseline. Text is lowercased and tokenized with a regex that preserves apostrophes inside words. Stemming is intentionally disabled in the first version to preserve literary names and phrases.
+
+Details: [Role 1 notes](docs/role1_notes.md).
+
+### Dense retrieval
+
+The dense pipeline uses `sentence-transformers/all-MiniLM-L6-v2`, 384-dimensional L2-normalized embeddings, and inner-product search. The production representation strategy combines the title with beginning, middle, and ending windows.
+
+Details: [Role 2 report](docs/role2_report.md).
+
+### ANN retrieval
+
+The serving candidate is FAISS HNSW with the balanced configuration:
+
+```text
+M = 32
+efConstruction = 200
+efSearch = 128
+```
+
+On the documented benchmark, HNSW reached 98.8% Recall@10 relative to Flat while reducing p95 search latency from about 56.8 ms to about 2.1 ms.
+
+Details: [ANN architecture decision](experiments/ann_architecture_decisions.md).
+
+### Hybrid retrieval
+
+Hybrid retrieval uses Reciprocal Rank Fusion:
+
+```text
+RRF(document) = sum(1 / (60 + source_rank))
+```
+
+Raw BM25 and cosine scores are not added because they use unrelated scales. The online hybrid path runs BM25 and HNSW concurrently and fuses their ranked candidate lists.
+
+Details: [Role 3 report](docs/role3_hybrid_rrf.md) and [serving integration decision](experiments/serving_integration_decision.md).
+
+### Chunk resolution
+
+The initial plan proposed finding a chapter and then locating a paragraph within it. The real dataset already consists of small scene-level chunks, so the refinement module now resolves retrieved IDs directly to text and metadata using an in-memory dictionary.
+
+Details: [paragraph/chunk resolution decision](experiments/paragraph_refinement_decision.md).
+
+## Repository Structure
 
 ```text
 Book-search/
@@ -26,86 +132,58 @@ Book-search/
 │   ├── backend.py
 │   └── frontend.py
 ├── data/
-│   ├── raw/
-│   └── processed/
-│       └── processed_chapters.jsonl
+│   ├── processed/
+│   │   └── processed_chapters.jsonl
+│   └── raw/
+├── docs/
+│   ├── instructions.md
+│   ├── role1_notes.md
+│   ├── role2_report.md
+│   ├── role3_hybrid_rrf.md
+│   └── role4_report.md
+├── experiments/
+│   ├── ann_architecture_decisions.md
+│   ├── paragraph_refinement_decision.md
+│   ├── quality_gate_decision.md
+│   ├── rerank_decision.md
+│   └── serving_integration_decision.md
 ├── indexes/
+│   ├── bm25/
 │   ├── faiss_ann/
 │   │   └── faiss_hnsw.index
 │   └── faiss_flat/
 │       ├── chapter_ids.json
 │       ├── embeddings.npy
-│       └── flat.index
+│       ├── flat.index
+│       └── proxies.jsonl
 ├── outputs/
+│   ├── dataset_stats.json
 │   └── bm25_index/
-│       ├── bm25_index/
-│       ├── metadata.pkl
-│       └── bm25_registry.json
+├── slides/
+│   └── role2_slide.md
 ├── src/
+│   ├── ann_benchmark.py
 │   ├── bm25_search.py
-│   ├── data_loader.py
+│   ├── data_preprocessing.py
+│   ├── embed_chapters.py
 │   ├── faiss_search.py
 │   ├── hybrid_search.py
 │   ├── paragraph_refinement.py
 │   ├── representation.py
 │   ├── rerank.py
+│   ├── sanity_checks.py
 │   └── search_engine.py
+├── tests/
+│   └── test_hybrid_search.py
 ├── requirements.txt
 └── README.md
 ```
 
-## Search Modes
+## Installation
 
-### `bm25`
+Python 3.11 or newer is recommended.
 
-Keyword-oriented lexical search.
-
-Best for:
-
-```text
-fireplace winter night
-storm at sea
-murder in the library
-```
-
-### `dense`
-
-Exact semantic search using FAISS `IndexFlatIP`.
-
-Best for evaluating dense retrieval quality, but slower than ANN on large collections.
-
-Example:
-
-```text
-a lonely person walking through a dark city
-```
-
-### `dense_ann`
-
-Fast semantic retrieval using an HNSW approximate nearest-neighbor index.
-
-This is the recommended production dense mode.
-
-### `hybrid`
-
-Combines BM25 and dense ANN results using Reciprocal Rank Fusion.
-
-Hybrid search is useful when a query contains both important keywords and broader semantic meaning.
-
-### `refined`
-
-Runs hybrid retrieval and returns resolved chunk text and metadata.
-
-In the current chunk-based dataset, the retrieved chunk is already the display fragment, so refinement mainly resolves IDs into readable text and metadata.
-
-## Requirements
-
-- Python 3.11 or newer
-- Windows, Linux, or macOS
-- Enough RAM to load the processed chunk database and indexes
-- Prebuilt BM25 and FAISS indexes
-
-Install dependencies:
+### Windows PowerShell
 
 ```powershell
 python -m venv .venv
@@ -113,7 +191,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-On Linux or macOS:
+### Linux or macOS
 
 ```bash
 python3 -m venv .venv
@@ -121,23 +199,23 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Running the Project
+## Running the Application
 
-Run all commands from the repository root.
+Run commands from the repository root.
 
-### 1. Start the backend
+### Start the backend
 
 ```powershell
 python -m uvicorn app.backend:app --port 8000
 ```
 
-For development with automatic reload:
+During development:
 
 ```powershell
 python -m uvicorn app.backend:app --reload --port 8000
 ```
 
-Backend endpoints:
+Useful endpoints:
 
 ```text
 http://127.0.0.1:8000/health
@@ -145,34 +223,16 @@ http://127.0.0.1:8000/docs
 http://127.0.0.1:8000/search
 ```
 
-Check the health endpoint before starting the frontend:
+### Start the frontend
 
-```text
-http://127.0.0.1:8000/health
-```
-
-Expected response:
-
-```json
-{
-  "status": "ok",
-  "initialized": true,
-  "project_root": "C:\\path\\to\\Book-search",
-  "error": null
-}
-```
-
-### 2. Start the frontend
-
-Open a second terminal:
+Open another terminal:
 
 ```powershell
-cd "C:\path\to\Book-search"
 .\.venv\Scripts\Activate.ps1
 python -m streamlit run app/frontend.py
 ```
 
-Open:
+Then open:
 
 ```text
 http://localhost:8501
@@ -180,79 +240,62 @@ http://localhost:8501
 
 The backend must remain active on port `8000`.
 
-## Example Queries
-
-Lexical:
-
-```text
-fireplace winter night
-storm at sea
-lost child in the forest
-```
-
-Semantic:
-
-```text
-a child is frightened but trying to be brave
-someone feels guilty after betraying a friend
-two people saying goodbye before a dangerous journey
-```
-
-Atmosphere:
-
-```text
-an eerie abandoned house at night
-a peaceful morning in the countryside
-a tense silence before something terrible happens
-```
-
-Action:
-
-```text
-someone escaping from pursuers through the woods
-a secret meeting between two enemies
-a character discovering a hidden room
-```
-
-## API Usage
-
-Example request:
+## API Example
 
 ```text
 GET /search?q=cozy+winter+night&mode=hybrid&top_k=5
 ```
 
-PowerShell example:
+PowerShell:
 
 ```powershell
 Invoke-RestMethod `
   -Uri "http://127.0.0.1:8000/search?q=cozy%20winter%20night&mode=hybrid&top_k=5"
 ```
 
-Example response shape:
+The unified result includes:
 
 ```json
 {
-  "query": "cozy winter night",
-  "mode": "hybrid",
-  "results": [
-    {
-      "book_title": "Example Book",
-      "author": "Example Author",
-      "chapter": "Chapter 3",
-      "fragment": "Matched chunk text...",
-      "method": "hybrid",
-      "score": 0.0325,
-      "rank": 1,
-      "provenance": "Gutenberg ID: ...",
-      "low_confidence": false,
-      "warning": null
-    }
-  ],
-  "latency_ms": 215.4,
+  "book_title": "Example Book",
+  "author": "Example Author",
+  "chapter": "Example Chapter",
+  "fragment": "Matched chunk text...",
+  "method": "hybrid",
+  "score": 0.0325,
+  "rank": 1,
+  "provenance": "Gutenberg ID: ...",
   "low_confidence": false,
-  "error": null
+  "warning": null
 }
+```
+
+The output contract and normalization logic are documented in [serving integration decision](experiments/serving_integration_decision.md).
+
+## Example Queries
+
+### Lexical
+
+```text
+fireplace winter night
+storm at sea
+murder in the library
+```
+
+### Semantic
+
+```text
+a lonely person walking through a dark city
+someone feels guilty after betraying a friend
+a child is frightened but trying to be brave
+```
+
+### Atmosphere and events
+
+```text
+an eerie abandoned house at night
+a tense silence before something terrible happens
+two people saying goodbye before a dangerous journey
 ```
 
 ## Building the BM25 Index
@@ -264,7 +307,7 @@ python src\bm25_search.py build `
   --max-docs 600000
 ```
 
-Test BM25 directly:
+Direct BM25 test:
 
 ```powershell
 python src\bm25_search.py search `
@@ -273,7 +316,9 @@ python src\bm25_search.py search `
   --top-k 5
 ```
 
-## Dense Index Files
+The BM25 design and corpus scale are explained in [Role 1 notes](docs/role1_notes.md).
+
+## Dense and ANN Artifacts
 
 Exact dense retrieval expects:
 
@@ -289,57 +334,83 @@ indexes/faiss_ann/faiss_hnsw.index
 indexes/faiss_flat/chapter_ids.json
 ```
 
-The number and order of entries in `chapter_ids.json` must match the vectors stored in the corresponding FAISS index.
+The ID list must be built from the same embedding run and in the same order as the FAISS vectors. The ANN trade-offs and Windows-safe FAISS I/O workaround are documented in [ANN architecture decision](experiments/ann_architecture_decisions.md).
 
-## Performance
+## Performance Design
 
-The server preloads major resources during startup:
+The serving layer follows a bootstrap/online split:
 
-- processed chunk database
-- BM25 index and metadata
-- FAISS Flat index
-- FAISS HNSW index
-- chapter ID mapping
+### Bootstrap phase
 
-The first startup may take some time, but query latency should be significantly lower afterward.
+- Load processed chunks into memory
+- Load BM25 index and metadata
+- Load FAISS Flat resources
+- Load HNSW index
+- Load chapter ID mapping
 
-Recommended serving modes:
+### Online phase
 
-```text
-bm25      -> lexical baseline
-dense     -> exact dense reference
-dense_ann -> fast semantic retrieval
-hybrid    -> BM25 + HNSW + RRF
-refined   -> hybrid results with resolved readable text
-```
+- Encode the query
+- Run the selected retriever
+- Run BM25 and HNSW concurrently for hybrid mode
+- Resolve only returned chunk IDs
+- Apply the quality gate
+- Return the normalized response
 
-For accurate latency measurements, run Uvicorn without `--reload`:
+Repeated identical searches can be served from an in-process LRU cache. Full details are in [serving integration decision](experiments/serving_integration_decision.md).
+
+For realistic latency measurements, run Uvicorn without `--reload`:
 
 ```powershell
 python -m uvicorn app.backend:app --port 8000
 ```
 
-Repeated identical queries may be served from the in-process query cache.
+## Quality Gate
+
+The system does not silently hide weak matches. It returns the closest results with:
+
+```json
+{
+  "low_confidence": true,
+  "warning": "Top score is below the method threshold."
+}
+```
+
+The thresholds differ by retrieval method because BM25, cosine similarity, and RRF scores have different scales. See [quality gate decision](experiments/quality_gate_decision.md).
+
+## Cross-Encoder Status
+
+`src/rerank.py` contains a working cross-encoder proof of concept, but it is not part of the normal online path. The team excluded it because of dependency size, CPU latency, and limited incremental value for already-small chunks.
+
+See [cross-encoder rerank decision](experiments/rerank_decision.md).
+
+## Testing
+
+Run the available tests from the repository root:
+
+```powershell
+pytest -v
+```
+
+Hybrid-specific tests:
+
+```powershell
+pytest tests\test_hybrid_search.py -v
+```
+
+Role 2 sanity checks are described in [Role 2 report](docs/role2_report.md).
 
 ## Troubleshooting
 
-### `Could not import module "backend"`
+### Backend cannot locate `search_engine.py`
 
-Run Uvicorn from the repository root:
+Run the backend from the repository root:
 
 ```powershell
 python -m uvicorn app.backend:app --port 8000
 ```
 
-Do not use:
-
-```powershell
-uvicorn backend:app
-```
-
-unless `backend.py` is located in the repository root.
-
-### Backend health is degraded
+### Health status is degraded
 
 Open:
 
@@ -347,91 +418,34 @@ Open:
 http://127.0.0.1:8000/health
 ```
 
-Check the `error` field and the backend terminal logs.
-
-Common causes:
-
-- missing BM25 index
-- missing FAISS index
-- missing `chapter_ids.json`
-- missing processed JSONL file
-- incompatible embedding dimensions
-- incorrect working directory
-
-### Frontend cannot reach backend
-
-Make sure the backend is running at:
-
-```text
-http://127.0.0.1:8000
-```
-
-Then restart Streamlit:
-
-```powershell
-python -m streamlit run app/frontend.py
-```
+Common causes are missing indexes, a missing processed dataset, incompatible vector dimensions, or a mismatched ID mapping.
 
 ### Results show `Unknown Book`
 
-This usually means the retrieved `chapter_id` does not exist in:
+The retrieved `chapter_id` may not exist in `data/processed/processed_chapters.jsonl`, or the index and processed corpus may have been generated from different versions.
+
+### Hybrid or ANN mode fails
+
+Verify:
 
 ```text
-data/processed/processed_chapters.jsonl
-```
-
-It can also indicate that the FAISS index and `chapter_ids.json` were built from a different version of the dataset.
-
-### Dense ANN mapping mismatch
-
-The number of HNSW vectors must match the number of IDs in:
-
-```text
+indexes/faiss_ann/faiss_hnsw.index
 indexes/faiss_flat/chapter_ids.json
 ```
 
-Rebuild both from the same embedding run if they differ.
+The serving layer intentionally allows BM25 and exact dense search to continue when ANN resources are unavailable. See [serving integration decision](experiments/serving_integration_decision.md).
 
-### High latency
+## Known Limitations
 
-Check that:
+- BM25 requires lexical overlap.
+- The beginning/middle/end dense representation can miss scenes outside those windows.
+- HNSW trades a small amount of recall for much lower latency.
+- Chunk boundaries may still occasionally produce imperfect reading fragments.
+- Quality thresholds are heuristic and should be calibrated on a labeled evaluation set.
+- The cross-encoder is implemented only as a proof of concept.
 
-- BM25 is not reloaded per query
-- FAISS indexes are loaded once at startup
-- hybrid uses HNSW rather than exact Flat search
-- fragment resolution uses the in-memory chunk dictionary
-- Uvicorn is running without `--reload`
-- the embedding model is cached and not recreated for every query
+Each limitation is discussed in the corresponding role or decision document linked above.
 
-## Git Workflow
+## License
 
-Update a role branch with the latest `main`:
-
-```powershell
-git switch role1
-git fetch origin
-git merge origin/main
-git push origin role1
-```
-
-Restore stashed changes:
-
-```powershell
-git stash list
-git stash pop
-```
-
-Create a safety branch before major changes:
-
-```powershell
-git switch -c backup-before-optimization
-git push -u origin backup-before-optimization
-```
-
-## Notes
-
-- The corpus contains public-domain fiction.
-- Retrieval works over preprocessed scene/chapter chunks.
-- `dense` is retained as an exact reference baseline.
-- `dense_ann` is intended for low-latency serving.
-- Raw BM25 and dense scores are not directly added together; hybrid search uses rank-based RRF.
+See [LICENSE](LICENSE).
