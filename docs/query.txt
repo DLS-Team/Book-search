@@ -1,0 +1,68 @@
+Semantic Book Scene Search — Pooling Query Set
+
+==================================================
+1. EXACT KEYWORD
+
+EK01. red wax letter
+EK02. silver key in snow
+EK03. a masked ball with a broken chandelier
+EK04. a sailor hides a map inside a sea chest
+EK05. a black horse waits outside an inn during a storm
+EK06. a brass machine has three levers and a green dial
+EK07. a governess finds a locked nursery with a torn blue curtain, a cracked mirror, and a portrait facing the wall
+EK08. a shipwreck survivor finds a brass lantern, a red scarf, and a damaged journal among the rocks at low tide
+==================================================
+2. SEMANTIC SCENE
+
+SS01. rivals become allies
+SS02. homecoming changes everything
+SS03. someone returns home and finds their family completely changed
+SS04. an investigator starts doubting a witness they used to trust
+SS05. a young person leaves home and learns to make independent decisions
+SS06. someone discovers that a peaceful society is built on hidden suffering
+SS07. two people finally understand that years of pride and misunderstanding kept them apart, and they decide to repair their relationship
+SS08. a ruler chooses to forgive a defeated enemy because continuing the conflict would cause more suffering for innocent people
+==================================================
+3. EMOTION / MOOD
+
+EM01. guilt after betrayal
+EM02. lonely in a crowd
+EM03. someone hides their fear and tries to look brave
+EM04. a character feels numb after surviving a violent battle
+EM05. jealousy grows during a conversation that seems friendly
+EM06. hope slowly returns after a long period of despair
+EM07. someone is happy to be loved but terrified that admitting their feelings will destroy the friendship they already have
+EM08. after being ignored and underestimated for years, a character develops a quiet resentment that they hide behind patient and respectful behavior
+==================================================
+4. ATMOSPHERE
+
+AT01. haunted castle at night
+AT02. sunny peaceful countryside
+AT03. a foggy harbor before dawn with a secretive mood
+AT04. a cold mechanical city that feels empty and unnatural
+AT05. a warm kitchen on a winter morning that feels safe
+AT06. a quiet frontier town where everyone expects trouble
+AT07. an enchanted forest glows under the moon while distant music makes the place feel beautiful, magical, and slightly dangerous
+AT08. rain falls over a crowded city at night, and the dim windows, narrow streets, and hurried strangers create a mood of suspicion
+==================================================
+5. ACTION / SITUATION
+
+AS01. prisoner escapes captivity
+AS02. strangers hide from pursuers
+AS03. someone follows a suspicious person without being noticed
+AS04. a person interrupts a ceremony to reveal the truth
+AS05. someone breaks a curse by returning what was stolen
+AS06. a family leaves home after losing everything in a disaster
+AS07. during a retreat, several soldiers refuse to abandon their wounded companions and struggle to carry them away before the enemy arrives
+AS08. two rival political groups meet in secret and decide to work together against a threat that neither side can defeat alone
+==================================================
+6. AMBIGUOUS / WEAK EVIDENCE
+
+AW01. something feels wrong
+AW02. the rules stop working
+AW03. someone realizes the room is not really empty
+AW04. a place feels familiar but also completely wrong
+AW05. a conversation seems to mean the opposite of its words
+AW06. the safest choice somehow feels like the most dangerous one
+AW07. something important has disappeared, but nobody can agree on what is missing, whether it ever existed, or why its absence matters
+AW08. a character experiences a scene that could be a memory, a dream, a lie, or several of these at the same time
