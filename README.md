@@ -380,6 +380,12 @@ pip install -r requirements.txt
 
 Run all commands from the repository root.
 
+### Downloading the precomputed data
+
+```powershell
+python src/setup_data.py
+```
+
 ### Start the backend
 
 ```powershell
